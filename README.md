@@ -2,6 +2,47 @@
 Debian = a free, open-source Linux operating system made entirely from GNU tools + Linux kernel.
 
 
+**simple one-line steps** to build from source on Debian:
+
+1. **Get source**
+
+```bash
+apt source hexchat
+```
+
+2. **Install build deps**
+
+```bash
+sudo apt build-dep hexchat
+```
+
+3. **Enter folder**
+
+```bash
+cd hexchat-*
+```
+
+4. **Configure build**
+
+```bash
+meson setup builddir
+```
+
+5. **Compile**
+
+```bash
+ninja -C builddir
+```
+
+6. **Install (optional)**
+
+```bash
+sudo ninja -C builddir install
+```
+
+
+
+
 
 **Debian study quick list** in one-liners:
 
@@ -311,5 +352,444 @@ Debian = a free, open-source Linux operating system made entirely from GNU tools
 * **Check boot time** → `systemd-analyze`
 * **Boot delay details** → `systemd-analyze blame`
 * **Critical chain** → `systemd-analyze critical-chain`
+
+
+
+
+
+Disable auto logout in Debian. It depends on whether it’s **console (tty), desktop session, or lock screen**:
+
+### 1. **For desktop (GNOME, XFCE, KDE etc.)**
+
+* Open **Settings → Power**
+* Set **Blank Screen / Suspend / Automatic Logout** → **Never**
+
+### 2. **For system-wide idle logout (systemd-logind)**
+
+Edit config:
+
+```bash
+sudo nano /etc/systemd/logind.conf
+```
+
+Set:
+
+```
+#KillUserProcesses=no
+IdleAction=ignore
+```
+
+Then reload:
+
+```bash
+sudo systemctl restart systemd-logind
+```
+
+### 3. **For shell/tty auto logout**
+
+Check if `TMOUT` is set:
+
+```bash
+echo $TMOUT
+```
+
+If it’s not `0`, disable it by editing `~/.bashrc` or `/etc/profile` and comment/remove:
+
+```bash
+# TMOUT=600
+```
+
+Then reload:
+
+```bash
+source ~/.bashrc
+```
+👉 After this, Debian won’t auto logout or lock screen.
+
+
+
+
+So the auto logout/lock you see is most likely coming from **desktop power settings** (screen blank / suspend).
+
+👉 Go to your desktop environment settings:
+
+* **GNOME** → *Settings → Power → Blank Screen* → set **Never**
+* **XFCE** → *Settings → Power Manager* → disable sleep/blank
+* **KDE/Plasma** → *System Settings → Power Management* → turn off idle timeouts
+
+
+
+
+Download source code of any package in Debian from the command line.
+
+### Steps:
+
+1. First enable source repos:
+
+```bash
+sudo nano /etc/apt/sources.list
+```
+
+Make sure you have lines like:
+
+```
+deb-src http://deb.debian.org/debian bookworm main contrib non-free
+```
+
+Save → exit.
+
+2. Update package lists:
+
+```bash
+sudo apt update
+```
+
+3. Install tools (only once):
+
+```bash
+sudo apt install build-essential dpkg-dev
+```
+
+4. Download source code of a package:
+
+```bash
+apt source <packagename>
+```
+
+Example:
+
+```bash
+apt source bash
+```
+
+This will create a folder with the source code.
+
+5. If you want all **build dependencies** too:
+
+```bash
+sudo apt build-dep <packagename>
+```
+
+---
+
+
+
+
+`sudo apt build-dep <packagename>` → installs (from repos) all the **libraries & tools needed to compile** that package.
+
+* It **does not copy source code**.
+* It **does not keep local .deb files by default** (they are installed directly).
+* What you get is a working environment to build that package from its source.
+
+If you also want to **keep local copies of the .deb files** (all dependencies), you can use:
+
+```bash
+sudo apt-get --download-only build-dep <packagename>
+```
+
+They will be saved in `/var/cache/apt/archives/`.
+
+
+
+
+**collect all source + build dependencies locally in Debian** so you can build offline later:
+
+---
+
+### 1. Enable source repos
+
+Edit:
+
+```bash
+sudo nano /etc/apt/sources.list
+```
+
+Add lines like:
+
+```
+deb-src http://deb.debian.org/debian bookworm main contrib non-free
+```
+
+Save → exit.
+
+---
+
+### 2. Update repo lists
+
+```bash
+sudo apt update
+```
+
+---
+
+### 3. Create a workspace dir
+
+```bash
+mkdir ~/offline-build && cd ~/offline-build
+```
+
+---
+
+### 4. Download source code
+
+```bash
+apt source <packagename>
+```
+
+👉 Example:
+
+```bash
+apt source bash
+```
+
+---
+
+### 5. Download all build dependencies (without installing)
+
+```bash
+sudo apt-get --download-only build-dep <packagename>
+```
+
+This will fetch `.deb` files into:
+
+```
+/var/cache/apt/archives/
+```
+
+---
+
+### 6. Copy all `.deb` files locally
+
+```bash
+cp /var/cache/apt/archives/*.deb ~/offline-build/deps/
+```
+
+---
+
+✅ Now you have:
+
+* **Source code folder**
+* **All dependency .deb files**
+
+You can take them to another machine, install with:
+
+```bash
+sudo dpkg -i *.deb
+```
+
+then build with:
+
+```bash
+dpkg-buildpackage -us -uc
+```
+
+---
+
+
+
+
+**Bash script** to grab source + all build dependencies for offline build in Debian:
+
+```bash
+#!/bin/bash
+# Usage: ./offline-build.sh <package>
+# Example: ./offline-build.sh bash
+
+PKG=$1
+
+if [ -z "$PKG" ]; then
+  echo "Usage: $0 <package>"
+  exit 1
+fi
+
+# Make workspace
+WORKDIR=~/offline-build/$PKG
+mkdir -p "$WORKDIR/deps"
+cd "$WORKDIR" || exit 1
+
+echo ">>> Updating repos..."
+sudo apt update
+
+echo ">>> Downloading source for $PKG..."
+apt source "$PKG"
+
+echo ">>> Downloading build dependencies..."
+sudo apt-get --download-only build-dep -y "$PKG"
+
+echo ">>> Copying dependency .deb files..."
+cp /var/cache/apt/archives/*.deb "$WORKDIR/deps/"
+
+echo ">>> Done!"
+echo "Source code in: $WORKDIR"
+echo "Dependencies in: $WORKDIR/deps/"
+```
+
+---
+
+### 🔹 How to use:
+
+1. Save as `offline-build.sh`
+2. Make executable:
+
+   ```bash
+   chmod +x offline-build.sh
+   ```
+3. Run:
+
+   ```bash
+   ./offline-build.sh bash
+   ```
+
+---
+
+
+
+
+
+`sudo apt build-dep crunch` →
+
+* It **does not install crunch itself**.
+* It **installs only the required dependency packages** needed to compile `crunch` from source.
+
+So after that:
+
+1. Your system will have all the libraries & tools installed.
+2. You can then run:
+
+   ```bash
+   apt source crunch
+   cd crunch-*
+   dpkg-buildpackage -us -uc
+   ```
+3. This builds your own `.deb` package for crunch.
+
+
+When you run:
+
+```bash
+sudo apt build-dep crunch
+```
+
+Debian looks into the **source package metadata**, not the binary package.
+
+### 🔹 Where deps come from?
+
+* Each Debian source package has a file called **`debian/control`**.
+* Inside it there is a section:
+
+  ```
+  Build-Depends: debhelper-compat (= 13), libpam0g-dev, libssl-dev, zlib1g-dev, ...
+  ```
+* This line tells exactly which `.deb` packages are needed to **compile** the software.
+
+### 🔹 What happens next?
+
+1. `apt build-dep` reads that list.
+2. It checks your system for those packages.
+3. Any missing ones → it installs them from the Debian repo.
+4. The program itself (`crunch`) is **not installed** — only the tools/libs needed to build it.
+
+---
+
+✅ So in short:
+
+* **`apt install crunch`** → installs prebuilt crunch.
+* **`apt build-dep crunch`** → installs only the compiler + libs required to build crunch from source.
+
+
+
+
+Debian determines which packages to install when you run:
+
+```bash
+sudo apt build-dep crunch
+```
+
+---
+
+### How Debian Finds Build Dependencies
+
+* Debian looks at the **source package metadata**, not the binary package.
+* In the source tree, there's a `debian/control` file with a section like:
+
+  ```
+  Build-Depends: libpam0g-dev, libssl-dev, zlib1g-dev, ...
+  ```
+
+  These are the exact .deb packages required to compile the software.
+* `apt build-dep crunch` reads that metadata, checks for missing packages, and installs only those **build dependencies**—it does **not** install the `crunch` program itself.([Debian][1], [man7.org][2])
+
+---
+
+### Verifying the Build-Depends for `crunch`
+
+You can see the actual list of build dependencies for the `crunch` package by running:
+
+```bash
+apt-cache showsrc crunch
+```
+
+This will print details of the source package, including the `Build-Depends:` line.([Ask Ubuntu][3])
+
+---
+
+### Summary
+
+| Action                     | Purpose                                                                                        |
+| -------------------------- | ---------------------------------------------------------------------------------------------- |
+| `apt build-dep crunch`     | Installs all packages needed to build `crunch` from source—**does not install crunch itself**. |
+| `apt-cache showsrc crunch` | Displays the source metadata including the list of build dependencies.                         |
+
+
+
+
+**`Build-Depends:`**
+
+---
+
+### How to Inspect the Build Dependencies for `crunch`
+
+#### **Option 1: Use `apt-cache showsrc` (if you’re on Debian)**
+
+```bash
+apt-cache showsrc crunch
+```
+
+This shows the source package metadata, including the `Build-Depends:` line directly.
+
+#### **Option 2: Manually download the source and inspect the `debian/control` file**
+
+Steps:
+
+1. Enable source repositories in `/etc/apt/sources.list` (ensure `deb-src …` lines are present).
+2. Update package lists:
+
+   ```bash
+   sudo apt update
+   ```
+3. Download the source for `crunch`:
+
+   ```bash
+   apt source crunch
+   ```
+4. Enter the source directory:
+
+   ```bash
+   cd crunch-*
+   ```
+5. Open the `debian/control` file and look for the `Build-Depends:` section.
+
+---
+
+### Why It Works
+
+* The **`debian/control`** file inside the source lists dependencies needed for building (`Build-Depends`), not runtime dependencies.
+* When you run:
+
+  ```bash
+  sudo apt build-dep crunch
+  ```
+
+---
 
 
