@@ -14,6 +14,7 @@ apt source hexchat
 
 ```bash
 sudo apt build-dep hexchat
+sudo apt build-dep hexchat --fix-missing
 ```
 
 3. **Enter folder**
